@@ -1,29 +1,6 @@
 const User = require('../models/user.model');
+const bcrypt = require('bcryptjs');
 
-const createUser = async (req,res) => {
-
-
-    const { name , email ,password , role } = req.body;
-
-    const newUser = new User({
-        name,
-        email,
-        password,
-        role
-    });
-
-    try{
-        await newUser.save();
-        res.status(201).json({ 
-            message : 'User created successfully' ,
-            user: newUser
-        });
-    }catch(err){
-        res.status(500).json({ message: err.message });
-    }
-
-    
-}
 
 const getAllUsers = async (req,res) => {
     try {
@@ -73,7 +50,7 @@ const updateUser = async (req,res) => {
         const user = await User.findById(id);
 
         if(!user){
-            returnres.status(404).json(
+            return res.status(404).json(
                 {
                     success : false,
                     message : "User not found"
@@ -83,8 +60,11 @@ const updateUser = async (req,res) => {
 
         user.name = name || user.name;
         user.email = email || user.email;
-        user.password = password || user.password;
         user.role = role || user.role;
+
+        if (password) {
+            user.password = await bcrypt.hash(password, 10);
+        }
 
 
         await user.save();
@@ -132,10 +112,8 @@ const deleteUser = async (req,res) => {
 }
 
 module.exports = {
-    createUser,
     getAllUsers,
     getUserById,
     updateUser,
     deleteUser
 }
-

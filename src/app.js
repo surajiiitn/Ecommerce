@@ -5,6 +5,7 @@ const morgan = require("morgan");
 
 const healthRoutes = require("./routes/health.routes");
 const userRoutes = require("./routes/user.routes");
+const authRoutes = require("./routes/auth.routes");
 
 const app = express();
 
@@ -20,12 +21,10 @@ app.use(morgan("dev"));
 
 // -- Health Routes 
 app.use("/api/v1/health", healthRoutes);
-
+// -- Auth Routes
+app.use("/api/v1/auth", authRoutes);
 // -- User Routes 
 app.use("/api/v1/user",userRoutes);
-
-
-
 
 /* ---------------- 404 ---------------- */
 
