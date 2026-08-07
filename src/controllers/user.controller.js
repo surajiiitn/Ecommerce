@@ -1,6 +1,12 @@
 const User = require('../models/user.model');
 const bcrypt = require('bcryptjs');
 
+const getProfile =  (req, res) => { 
+    res.status(200).json({ 
+        success: true, 
+        data: req.user 
+    });
+};
 
 const getAllUsers = async (req,res) => {
     try {
@@ -31,20 +37,24 @@ const getUserById = async (req,res) => {
         }
 
         res.status(200).json({
+            success : true,
             message : 'User retrieved successfully',
             data : user
         })
 
 
     }catch(err){
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ 
+            success : false,
+            message: err.message 
+        });
     }
 }
 
 const updateUser = async (req,res) => {
     const { id } = req.params; // get data from dynamic url 
     
-    const { name , email , password , role } = req.body; // get data from request body
+    const { name , email , password  } = req.body; // get data from request body
 
     try{
         const user = await User.findById(id);
@@ -58,9 +68,8 @@ const updateUser = async (req,res) => {
             )
         }
 
-        user.name = name || user.name;
-        user.email = email || user.email;
-        user.role = role || user.role;
+        if (name !== undefined) user.name = name;
+        if (email !== undefined) user.email = email;
 
         if (password) {
             user.password = await bcrypt.hash(password, 10);
@@ -115,5 +124,6 @@ module.exports = {
     getAllUsers,
     getUserById,
     updateUser,
-    deleteUser
+    deleteUser,
+    getProfile
 }
