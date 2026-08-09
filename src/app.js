@@ -21,6 +21,13 @@ app.use(morgan("dev"));
 
 // -- Health Routes 
 app.use("/api/v1/health", healthRoutes);
+
+if(process.env.NODE_ENV === "development"){
+    app.use((req, res, next) => {
+        console.log(req.user);
+        next();
+    });
+}
 // -- Auth Routes
 app.use("/api/v1/auth", authRoutes);
 // -- User Routes 

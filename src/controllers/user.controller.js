@@ -52,9 +52,16 @@ const getUserById = async (req,res) => {
 }
 
 const updateUser = async (req,res) => {
-    const { id } = req.params; // get data from dynamic url 
+    const { id }  = req.params; // get data from dynamic url 
+
+    if(req.user.id !== id && req.user.role !== 'admin'){
+        return res.status(403).json({
+            success : false,
+            message : "You are not authorized to update this user"
+        })
+    }
     
-    const { name , email , password  } = req.body; // get data from request body
+    const { name , email } = req.body; // get data from request body
 
     try{
         const user = await User.findById(id);
@@ -71,9 +78,7 @@ const updateUser = async (req,res) => {
         if (name !== undefined) user.name = name;
         if (email !== undefined) user.email = email;
 
-        if (password) {
-            user.password = await bcrypt.hash(password, 10);
-        }
+
 
 
         await user.save();
@@ -94,6 +99,13 @@ const updateUser = async (req,res) => {
 
 const deleteUser = async (req,res) => {
     const {id} = req.params;
+
+    if(req.user.id !== id && req.user.role !== 'admin'){
+        return res.status(403).json({
+            success : false,
+            message : "You are not authorized to delete this user"
+        })
+    }
 
     try{
         const user = await User.findByIdAndDelete(id);
@@ -120,10 +132,63 @@ const deleteUser = async (req,res) => {
     }
 }
 
+const updatePassword = async (req,res) => {
+    const { id } = req.params;
+
+    if(req.user.id !== id){
+        return res.status(403).json({
+            success : false,
+            message : "You are not authorized to update this user's password"
+        })
+    }
+
+    const { oldPassword , newPassword} = req.body;
+
+    try{
+        const user = await User.findById(id);
+
+        if(!user){
+            return res.status(404).json(
+                {
+                    success : false,
+                    message : "User not found"
+                }
+            )
+        }
+
+        const isMatch = await bcrypt.compare(oldPassword , user.password);
+
+        if(!isMatch){
+            return res.status(400).json({
+                success : false,
+                message : "Old password is incorrect"
+            })
+        }
+
+        const hashedpassword = await bcrypt.hash(newPassword , 10);
+
+        user.password = hashedpassword;
+        
+        await user.save();
+
+        res.status(200).json({
+            success : true,
+            message : "Password updated successfully"
+        })
+    }catch(err){
+        res.status(500).json({
+            success : false,
+            message : err.message
+        })
+    }
+    
+}
+
 module.exports = {
     getAllUsers,
     getUserById,
     updateUser,
     deleteUser,
-    getProfile
+    getProfile,
+    updatePassword
 }
