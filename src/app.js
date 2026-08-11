@@ -6,6 +6,7 @@ const morgan = require("morgan");
 const healthRoutes = require("./routes/health.routes");
 const userRoutes = require("./routes/user.routes");
 const authRoutes = require("./routes/auth.routes");
+const productRoutes = require("./routes/product.routes");
 
 const app = express();
 
@@ -32,6 +33,8 @@ if(process.env.NODE_ENV === "development"){
 app.use("/api/v1/auth", authRoutes);
 // -- User Routes 
 app.use("/api/v1/user",userRoutes);
+
+app.use("/api/v1/product", productRoutes);
 
 /* ---------------- 404 ---------------- */
 
