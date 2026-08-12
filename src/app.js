@@ -32,9 +32,9 @@ if(process.env.NODE_ENV === "development"){
 // -- Auth Routes
 app.use("/api/v1/auth", authRoutes);
 // -- User Routes 
-app.use("/api/v1/user",userRoutes);
+app.use("/api/v1/users",userRoutes);
 
-app.use("/api/v1/product", productRoutes);
+app.use("/api/v1/products", productRoutes);
 
 /* ---------------- 404 ---------------- */
 

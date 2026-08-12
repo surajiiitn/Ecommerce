@@ -37,14 +37,61 @@ const createProduct = async (req, res) => {
 
 const getAllProducts = async (req, res) => {
     try {
-        const products = await Product.find();
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+
+        const skip = (page - 1) * limit;
+
+        const search = req.query.search || "";
+        const category = req.query.category || "";
+
+        const minPrice = Number(req.query.minPrice) || 0;
+        const maxPrice =
+            Number(req.query.maxPrice) || Number.MAX_SAFE_INTEGER;
+
+        const sortBy = req.query.sortBy || "createdAt";
+        const sortOrder = req.query.sortOrder === "desc" ? -1 : 1;
+
+        const filter = {};
+
+        if (search) {
+            filter.name = {
+                $regex: search,
+                $options: "i"
+            };
+        }
+
+        if (category) {
+            filter.category = category;
+        }
+
+        filter.price = {
+            $gte: minPrice,
+            $lte: maxPrice
+        };
+
+        const totalProducts = await Product.countDocuments(filter);
+
+        const products = await Product.find(filter)
+            .sort({ [sortBy]: sortOrder })
+            .skip(skip)
+            .limit(limit);
 
         res.status(200).json({
             success: true,
-            message: products.length === 0
-                ? "No products found"
-                : "Products found",
-            data: products
+            message:
+                products.length === 0
+                    ? "No products found"
+                    : "Products found",
+            data: products,
+            pagination: {
+                page,
+                limit,
+                totalProducts,
+                totalPages: Math.ceil(totalProducts / limit),
+                hasNextPage: page < Math.ceil(totalProducts / limit),
+                hasPreviousPage: page > 1
+            }
         });
     } catch (err) {
         res.status(500).json({
