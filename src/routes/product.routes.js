@@ -11,6 +11,6 @@ router.get('/', getAllProducts);
 router.get('/:id', getProductById);
 router.post('/', protect, authorize(['admin']), productValidator, createProduct);
 router.put('/:id', protect,authorize(['admin']), productValidator, updateProduct);
-router.delete('/:id', protect,authorize(['admin']), productValidator, deleteProduct);
+router.delete('/:id', protect,authorize(['admin']), deleteProduct);
 
 module.exports = router;
