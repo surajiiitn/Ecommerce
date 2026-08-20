@@ -46,7 +46,7 @@ const createOrder = async (req, res) => {
 
     const order = await Order.create({
         user: id,
-        items: orderItems,
+        products: orderItems,
         totalAmount,
     });
 
@@ -98,18 +98,22 @@ const getMyOrders = async (req,res) => {
 }
 
 const getOrderbyId = async (req,res) => {
-    const { id} = req.params;
+    const { id: orderId } = req.params;
 
     try {
-        const {id} = req.user;
-        const Order = await Order.find({
-            _id : id,
-            user : id
-        }).populate("items.product");
+        const filter = {
+            _id : orderId
+        };
+
+        if(req.user.role !== 'admin'){
+            filter.user = req.user.id;
+        }
+
+        const order = await Order.findOne(filter).populate("products.product");
 
         // Owner Ship checking 
 
-        if(!Order){
+        if(!order){
             return res.status(404).json({
                 success : false,
                 message : 'Order not found'
@@ -118,7 +122,7 @@ const getOrderbyId = async (req,res) => {
 
         res.status(200).json({
             success : true,
-            data : Order
+            data : order
         })
     }catch(err){
         res.status(500).json({
@@ -240,4 +244,3 @@ module.exports = {
     getAllOrders,
     updateOrderStatus
 };
-

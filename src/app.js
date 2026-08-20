@@ -9,6 +9,7 @@ const authRoutes = require("./routes/auth.routes");
 const productRoutes = require("./routes/product.routes");
 const cartRoutes = require("./routes/cart.routes");
 const orderRoutes = require("./routes/order.routes");
+const addressRoutes = require("./routes/address.routes");
 
 const app = express();
 
@@ -41,7 +42,8 @@ app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/cart", cartRoutes);
 // -- Order Routes
 app.use("/api/v1/orders", orderRoutes);
-
+// -- Address Routes
+app.use("/api/v1/addresses", addressRoutes);
 /* ---------------- 404 ---------------- */
 
 app.use((req, res) => {

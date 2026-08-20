@@ -12,7 +12,7 @@ const orderStatusValidator = [
         .isIn([
 
             'pending',
-            'confirmed',
+            'processing',
             'shipped',
             'delivered',
             'cancelled'

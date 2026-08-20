@@ -10,15 +10,14 @@ const createProduct = async (req, res) => {
             });
         }
 
-        const { name, description, price, category, stock, image } = req.body;
+        const { name, description, price, category, stock } = req.body;
 
         const product = await Product.create({
             name,
             description,
             price,
             category,
-            stock,
-            image
+            stock
         });
 
         res.status(201).json({
@@ -154,7 +153,7 @@ const updateProduct = async (req, res) => {
             });
         }
 
-        const { name, description, price, category, stock, image } = req.body;
+        const { name, description, price, category, stock } = req.body;
 
         const product = await Product.findById(id);
 
@@ -170,7 +169,6 @@ const updateProduct = async (req, res) => {
         if (price !== undefined) product.price = price;
         if (category !== undefined) product.category = category;
         if (stock !== undefined) product.stock = stock;
-        if (image !== undefined) product.image = image;
 
         await product.save();
 
