@@ -14,13 +14,13 @@ const {
 const { protect } = require('../middlewares/auth.middleware');
 const { validate } = require('../middlewares/validation.middleware');
 const { authorize } = require('../middlewares/authorize.middleware');
-const { orderStatusValidator } = require('../validators/order.validator');
+const { createOrderValidator, orderIdValidator, orderStatusValidator } = require('../validators/order.validator');
 
-router.post("/", protect, createOrder);
+router.post("/", protect, createOrderValidator, validate, createOrder);
 router.get("/", protect, getMyOrders);
-router.get("/:id", protect, getOrderbyId);
-router.put("/:id/cancel", protect, cancelOrder);
 router.get("/admin/all", protect, authorize(["admin"]), getAllOrders);
-router.put("/:id/status", protect, authorize(["admin"]),orderStatusValidator,validate, updateOrderStatus);
+router.get("/:id", protect, orderIdValidator, validate, getOrderbyId);
+router.put("/:id/cancel", protect, orderIdValidator, validate, cancelOrder);
+router.put("/:id/status", protect, authorize(["admin"]), orderIdValidator, orderStatusValidator, validate, updateOrderStatus);
 
 module.exports = router;

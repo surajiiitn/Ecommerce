@@ -2,8 +2,6 @@
 node_modules/
 
 # Environment variables
-.env
-.env.*
 product.js
 
 # Logs
@@ -34,3 +32,4 @@ coverage/
 
 # Local files 
 Readme/
+config.bat

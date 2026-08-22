@@ -1,18 +1,31 @@
-const  User  = require("../models/user.model");
 const  Cart  = require("../models/cart.model");
 const  Order  = require("../models/order.model");
 const Product  = require("../models/product.model");
+const Address = require("../models/address.model");
 
 const createOrder = async (req, res) => {
   try {
-    const {id} = req.user;
-    const cart = await Cart.findOne({ user: id})
+    const userId = req.user._id || req.user.id;
+    const { addressId } = req.body;
+    const cart = await Cart.findOne({ user: userId})
                                         .populate("items.product");
 
     if (!cart || cart.items.length === 0) {
         return res.status(400).json({
             success: false,
             message: "Cart is empty",
+        });
+    }
+
+    const address = await Address.findOne({
+        _id: addressId,
+        user: userId,
+    });
+
+    if (!address) {
+        return res.status(404).json({
+            success: false,
+            message: "Address not found",
         });
     }
 
@@ -45,7 +58,8 @@ const createOrder = async (req, res) => {
     }));
 
     const order = await Order.create({
-        user: id,
+        user: userId,
+        address: address._id,
         products: orderItems,
         totalAmount,
     });
@@ -81,7 +95,10 @@ const getMyOrders = async (req,res) => {
     try {
 
         const {id} = req.user;
-        const orders = await Order.find({user: id}).populate("products.product").sort({createdAt : -1});
+        const orders = await Order.find({user: id})
+                            .populate("address")
+                            .populate("products.product")
+                            .sort({createdAt : -1});
 
         res.status(200).json({
             success : true,
@@ -109,7 +126,9 @@ const getOrderbyId = async (req,res) => {
             filter.user = req.user.id;
         }
 
-        const order = await Order.findOne(filter).populate("products.product");
+        const order = await Order.findOne(filter)
+                            .populate("address")
+                            .populate("products.product");
 
         // Owner Ship checking 
 
@@ -183,6 +202,7 @@ const getAllOrders = async (req,res) => {
     try{
         const orders = await Order.find()
                             .populate("user").select("-password")
+                            .populate("address")
                             .populate("products.product")
                             .sort({createdAt : -1});
 

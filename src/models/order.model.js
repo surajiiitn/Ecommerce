@@ -25,7 +25,21 @@ const orderSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    products: [itemSchema],
+    address: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Address",
+      required: true,
+    },
+    products: {
+      type: [itemSchema],
+      required: true,
+      validate: {
+        validator(products) {
+          return Array.isArray(products) && products.length > 0;
+        },
+        message: "Order must contain at least one product",
+      },
+    },
     totalAmount: {
       type: Number,
       required: true,
