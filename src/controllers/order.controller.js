@@ -2,80 +2,126 @@ const  Cart  = require("../models/cart.model");
 const  Order  = require("../models/order.model");
 const Product  = require("../models/product.model");
 const Address = require("../models/address.model");
+const mongoose = require("mongoose");
 
 const createOrder = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
+    session.startTransaction();
+
     const userId = req.user._id || req.user.id;
     const { addressId } = req.body;
-    const cart = await Cart.findOne({ user: userId})
-                                        .populate("items.product");
+
+    const cart = await Cart.findOne({ user: userId })
+      .populate("items.product")
+      .session(session);
 
     if (!cart || cart.items.length === 0) {
-        return res.status(400).json({
-            success: false,
-            message: "Cart is empty",
-        });
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: "Cart is empty",
+      });
     }
 
     const address = await Address.findOne({
-        _id: addressId,
-        user: userId,
-    });
+      _id: addressId,
+      user: userId,
+    }).session(session);
 
     if (!address) {
-        return res.status(404).json({
-            success: false,
-            message: "Address not found",
-        });
+      await session.abortTransaction();
+
+      return res.status(404).json({
+        success: false,
+        message: "Address not found",
+      });
     }
 
     let totalAmount = 0;
 
-    for(const item of cart.items) {
-        const product = item.product;
+    for (const item of cart.items) {
+      const product = item.product;
 
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: "Product not found",
-            });
-        }
+      if (!product) {
+        await session.abortTransaction();
 
-        if (item.quantity > product.stock) {
-            return res.status(400).json({
-                success: false,
-                message: `Not enough stock for ${product.name}`,
-            });
-        }
+        return res.status(404).json({
+          success: false,
+          message: "Product not found",
+        });
+      }
 
-        totalAmount += product.price * item.quantity;
+      if (item.quantity > product.stock) {
+        await session.abortTransaction();
+
+        return res.status(400).json({
+          success: false,
+          message: `Not enough stock for ${product.name}`,
+        });
+      }
+
+      totalAmount += product.price * item.quantity;
     }
 
     const orderItems = cart.items.map((item) => ({
-        product: item.product._id,
-        quantity: item.quantity,
-        price: item.product.price,
+      product: item.product._id,
+      quantity: item.quantity,
+      price: item.product.price,
     }));
 
-    const order = await Order.create({
-        user: userId,
-        address: address._id,
-        products: orderItems,
-        totalAmount,
-    });
-
     for (const item of cart.items) {
-      await Product.findByIdAndUpdate(item.product._id,{
+      const updatedProduct = await Product.findOneAndUpdate(
+        {
+          _id: item.product._id,
+          stock: {
+            $gte: item.quantity,
+          },
+        },
+        {
           $inc: {
             stock: -item.quantity,
           },
         },
+        {
+          new: true,
+          session,
+        }
       );
+
+      if (!updatedProduct) {
+        await session.abortTransaction();
+
+        return res.status(400).json({
+          success: false,
+          message: `Not enough stock for ${item.product.name}`,
+        });
+      }
     }
+
+    const [order] = await Order.create(
+      [
+        {
+          user: userId,
+          address: address._id,
+          products: orderItems,
+          totalAmount,
+        },
+      ],
+      {
+        session,
+      }
+    );
 
     cart.items = [];
 
-    await cart.save();
+    await cart.save({
+      session,
+    });
+
+    await session.commitTransaction();
 
     res.status(201).json({
       success: true,
@@ -83,14 +129,16 @@ const createOrder = async (req, res) => {
       data: order,
     });
   } catch (err) {
+    await session.abortTransaction();
+
     res.status(500).json({
       success: false,
-
       message: err.message,
     });
+  } finally {
+    session.endSession();
   }
 };
-
 const getMyOrders = async (req,res) => {
     try {
 
