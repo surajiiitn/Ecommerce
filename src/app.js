@@ -10,6 +10,7 @@ const productRoutes = require("./routes/product.routes");
 const cartRoutes = require("./routes/cart.routes");
 const orderRoutes = require("./routes/order.routes");
 const addressRoutes = require("./routes/address.routes");
+const paymentRoutes = require("./routes/payment.routes");
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use(express.json());
 app.use(cors());
 app.use(helmet());
 app.use(morgan("dev"));
+app.use(express.static("public"));
 
 /* ---------------- Routes ---------------- */
 
@@ -44,6 +46,8 @@ app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/orders", orderRoutes);
 // -- Address Routes
 app.use("/api/v1/addresses", addressRoutes);
+// -- Payment Routes
+app.use("/api/v1/payments",paymentRoutes);
 /* ---------------- 404 ---------------- */
 
 app.use((req, res) => {
