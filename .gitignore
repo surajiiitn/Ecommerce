@@ -33,3 +33,4 @@ coverage/
 # Local files 
 Readme/
 config.bat
+.env
