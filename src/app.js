@@ -16,6 +16,13 @@ const app = express();
 
 /* ---------------- Middleware ---------------- */
 
+app.use(
+    "/api/v1/payments/webhook",
+    express.raw({
+        type: "application/json",
+    })
+);
+
 app.use(express.json());
 app.use(cors());
 app.use(helmet());

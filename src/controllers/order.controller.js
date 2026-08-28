@@ -1,8 +1,8 @@
+const mongoose = require("mongoose");
 const Cart = require("../models/cart.model");
 const Order = require("../models/order.model");
 const Product = require("../models/product.model");
 const Address = require("../models/address.model");
-const mongoose = require("mongoose");
 
 const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
@@ -204,13 +204,19 @@ const getOrderbyId = async (req, res) => {
 const cancelOrder = async (req, res) => {
   const { id } = req.params;
 
+  const session = await mongoose.startSession();
+
   try {
+    session.startTransaction();
+
     const order = await Order.findOne({
       _id: id,
       user: req.user.id,
-    });
+    }).session(session);
 
     if (!order) {
+      await session.abortTransaction();
+
       return res.status(404).json({
         success: false,
         message: "Order not found",
@@ -218,33 +224,71 @@ const cancelOrder = async (req, res) => {
     }
 
     if (order.status === "cancelled") {
+      await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: "Order is already cancelled",
       });
     }
 
-    if (order.status === "shipped" || order.status === "delivered") {
+    if (
+      order.status === "shipped" ||
+      order.status === "delivered"
+    ) {
+      await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: "Order cannot be cancelled",
       });
     }
 
+    // Restore product stock
+    for (const item of order.products) {
+      const product = await Product.findByIdAndUpdate(
+        item.product,
+        {
+          $inc: {
+            stock: item.quantity,
+          },
+        },
+        {
+          new: true,
+          session,
+        }
+      );
+
+      if (!product) {
+        throw new Error(
+          `Product not found: ${item.product}`
+        );
+      }
+    }
+
+    // Cancel order
     order.status = "cancelled";
 
-    await order.save();
+    await order.save({ session });
 
-    res.status(200).json({
+    await session.commitTransaction();
+
+    return res.status(200).json({
       success: true,
       message: "Order cancelled successfully",
       data: order,
     });
+
   } catch (err) {
-    res.status(500).json({
+    await session.abortTransaction();
+
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
+
+  } finally {
+    session.endSession();
   }
 };
 

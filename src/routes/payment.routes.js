@@ -5,6 +5,7 @@ const router = express.Router();
 const {
     createPaymentOrder,
     verifyPayment,
+    handleWebhook
 } = require("../controllers/payment.controller");
 
 const { protect } = require("../middlewares/auth.middleware");
@@ -19,6 +20,11 @@ router.post(
     "/verify",
     protect,
     verifyPayment
+);
+
+router.post(
+    "/webhook",
+    handleWebhook
 );
 
 module.exports = router;

@@ -6,7 +6,6 @@ const razorpay = require("../config/razorpay");
 
 const createPaymentOrder = async (req, res) => {
     try {
-
         const userId = req.user._id || req.user.id;
         const { orderId } = req.body;
 
@@ -47,7 +46,7 @@ const createPaymentOrder = async (req, res) => {
             status: "created",
         });
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
             message: "Payment order created successfully",
             data: {
@@ -61,18 +60,16 @@ const createPaymentOrder = async (req, res) => {
         });
 
     } catch (err) {
-
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: err.message,
         });
-
     }
 };
 
+
 const verifyPayment = async (req, res) => {
     try {
-
         const userId = req.user._id || req.user.id;
 
         const {
@@ -93,6 +90,14 @@ const verifyPayment = async (req, res) => {
             });
         }
 
+        // Idempotency protection
+        if (payment.status === "paid") {
+            return res.status(400).json({
+                success: false,
+                message: "Payment already processed",
+            });
+        }
+
         const body =
             razorpay_order_id +
             "|" +
@@ -107,8 +112,8 @@ const verifyPayment = async (req, res) => {
             .digest("hex");
 
         if (expectedSignature !== razorpay_signature) {
-
             payment.status = "failed";
+
             await payment.save();
 
             return res.status(400).json({
@@ -137,7 +142,7 @@ const verifyPayment = async (req, res) => {
 
         await order.save();
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Payment verified successfully",
             data: {
@@ -147,16 +152,140 @@ const verifyPayment = async (req, res) => {
         });
 
     } catch (err) {
-
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: err.message,
         });
-
     }
 };
+
+
+const handleWebhook = async (req, res) => {
+    try {
+        const signature = req.headers["x-razorpay-signature"];
+
+        if (!signature) {
+            return res.status(400).json({
+                success: false,
+                message: "Webhook signature missing",
+            });
+        }
+
+        const expectedSignature = crypto
+            .createHmac(
+                "sha256",
+                process.env.RAZORPAY_WEBHOOK_SECRET
+            )
+            .update(req.body)
+            .digest("hex");
+
+        if (signature !== expectedSignature) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid webhook signature",
+            });
+        }
+
+        const event = JSON.parse(req.body.toString());
+
+        console.log(
+            "Razorpay webhook event:",
+            event.event
+        );
+
+        if (event.event === "payment.captured") {
+            const paymentEntity = event.payload.payment.entity;
+
+            const razorpayOrderId = paymentEntity.order_id;
+            const razorpayPaymentId = paymentEntity.id;
+
+            /*
+             * Atomic update
+             *
+             * Only a payment which is NOT already paid
+             * can be changed to paid.
+             */
+            const payment = await Payment.findOneAndUpdate(
+                {
+                    gatewayOrderId: razorpayOrderId,
+                    status: { $ne: "paid" },
+                },
+                {
+                    $set: {
+                        gatewayPaymentId: razorpayPaymentId,
+                        status: "paid",
+                    },
+                },
+                {
+                    new: true,
+                }
+            );
+
+            /*
+             * Payment was not updated.
+             *
+             * It can mean:
+             * 1. Payment doesn't exist
+             * 2. Payment was already processed
+             */
+            if (!payment) {
+                const existingPayment = await Payment.findOne({
+                    gatewayOrderId: razorpayOrderId,
+                });
+
+                if (!existingPayment) {
+                    return res.status(404).json({
+                        success: false,
+                        message: "Payment not found",
+                    });
+                }
+
+                if (existingPayment.status === "paid") {
+                    return res.status(200).json({
+                        success: true,
+                        message: "Payment already processed",
+                    });
+                }
+
+                return res.status(400).json({
+                    success: false,
+                    message: "Payment could not be processed",
+                });
+            }
+
+            /*
+             * Payment successfully changed:
+             *
+             * created → paid
+             */
+            const order = await Order.findById(payment.order);
+
+            if (order) {
+                order.paymentStatus = "paid";
+                order.status = "processing";
+
+                await order.save();
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Webhook processed successfully",
+        });
+
+    } catch (err) {
+        console.error("Webhook error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: err.message,
+        });
+    }
+};
+
 
 module.exports = {
     createPaymentOrder,
     verifyPayment,
+    handleWebhook,
 };
