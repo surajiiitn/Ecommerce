@@ -1,5 +1,7 @@
 const crypto = require("crypto");
 
+const mongoose = require("mongoose");
+
 const Order = require("../models/order.model");
 const Payment = require("../models/payment.model");
 const razorpay = require("../config/razorpay");
@@ -21,10 +23,37 @@ const createPaymentOrder = async (req, res) => {
             });
         }
 
+        if (order.status === "cancelled") {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot create payment for cancelled order",
+            });
+        }
+
         if (order.paymentStatus === "paid") {
             return res.status(400).json({
                 success: false,
                 message: "Order is already paid",
+            });
+        }
+
+        const existingPayment = await Payment.findOne({
+            order: order._id,
+            status: "created",
+        });
+
+        if (existingPayment) {
+            return res.status(200).json({
+                success: true,
+                message: "Payment order already exists",
+                data: {
+                    paymentId: existingPayment._id,
+                    orderId: order._id,
+                    razorpayOrderId: existingPayment.gatewayOrderId,
+                    amount: existingPayment.amount * 100,
+                    currency: existingPayment.currency,
+                    key: process.env.RAZORPAY_KEY_ID,
+                },
             });
         }
 
@@ -67,9 +96,12 @@ const createPaymentOrder = async (req, res) => {
     }
 };
 
-
 const verifyPayment = async (req, res) => {
+    const session = await mongoose.startSession();
+
     try {
+        session.startTransaction();
+
         const userId = req.user._id || req.user.id;
 
         const {
@@ -81,19 +113,22 @@ const verifyPayment = async (req, res) => {
         const payment = await Payment.findOne({
             gatewayOrderId: razorpay_order_id,
             user: userId,
-        });
+        }).session(session);
 
         if (!payment) {
+            await session.abortTransaction();
+
             return res.status(404).json({
                 success: false,
                 message: "Payment not found",
             });
         }
 
-        // Idempotency protection
         if (payment.status === "paid") {
-            return res.status(400).json({
-                success: false,
+            await session.abortTransaction();
+
+            return res.status(200).json({
+                success: true,
                 message: "Payment already processed",
             });
         }
@@ -111,10 +146,17 @@ const verifyPayment = async (req, res) => {
             .update(body)
             .digest("hex");
 
-        if (expectedSignature !== razorpay_signature) {
+        if (
+            !crypto.timingSafeEqual(
+                Buffer.from(expectedSignature),
+                Buffer.from(razorpay_signature || "")
+            )
+        ) {
             payment.status = "failed";
 
-            await payment.save();
+            await payment.save({ session });
+
+            await session.commitTransaction();
 
             return res.status(400).json({
                 success: false,
@@ -122,25 +164,41 @@ const verifyPayment = async (req, res) => {
             });
         }
 
-        payment.gatewayPaymentId = razorpay_payment_id;
-        payment.gatewaySignature = razorpay_signature;
-        payment.status = "paid";
-
-        await payment.save();
-
-        const order = await Order.findById(payment.order);
+        const order = await Order.findOne({
+            _id: payment.order,
+            user: userId,
+        }).session(session);
 
         if (!order) {
+            await session.abortTransaction();
+
             return res.status(404).json({
                 success: false,
                 message: "Order not found",
             });
         }
 
+        if (order.status === "cancelled") {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+                success: false,
+                message: "Cannot process payment for cancelled order",
+            });
+        }
+
+        payment.gatewayPaymentId = razorpay_payment_id;
+        payment.gatewaySignature = razorpay_signature;
+        payment.status = "paid";
+
+        await payment.save({ session });
+
         order.paymentStatus = "paid";
         order.status = "processing";
 
-        await order.save();
+        await order.save({ session });
+
+        await session.commitTransaction();
 
         return res.status(200).json({
             success: true,
@@ -152,15 +210,21 @@ const verifyPayment = async (req, res) => {
         });
 
     } catch (err) {
+        await session.abortTransaction();
+
         return res.status(500).json({
             success: false,
             message: err.message,
         });
+
+    } finally {
+        await session.endSession();
     }
 };
 
-
 const handleWebhook = async (req, res) => {
+    const session = await mongoose.startSession();
+
     try {
         const signature = req.headers["x-razorpay-signature"];
 
@@ -179,7 +243,12 @@ const handleWebhook = async (req, res) => {
             .update(req.body)
             .digest("hex");
 
-        if (signature !== expectedSignature) {
+        if (
+            !crypto.timingSafeEqual(
+                Buffer.from(expectedSignature),
+                Buffer.from(signature)
+            )
+        ) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid webhook signature",
@@ -188,84 +257,67 @@ const handleWebhook = async (req, res) => {
 
         const event = JSON.parse(req.body.toString());
 
-        console.log(
-            "Razorpay webhook event:",
-            event.event
-        );
-
         if (event.event === "payment.captured") {
             const paymentEntity = event.payload.payment.entity;
 
             const razorpayOrderId = paymentEntity.order_id;
             const razorpayPaymentId = paymentEntity.id;
 
-            /*
-             * Atomic update
-             *
-             * Only a payment which is NOT already paid
-             * can be changed to paid.
-             */
-            const payment = await Payment.findOneAndUpdate(
-                {
-                    gatewayOrderId: razorpayOrderId,
-                    status: { $ne: "paid" },
-                },
-                {
-                    $set: {
-                        gatewayPaymentId: razorpayPaymentId,
-                        status: "paid",
-                    },
-                },
-                {
-                    new: true,
-                }
-            );
+            session.startTransaction();
 
-            /*
-             * Payment was not updated.
-             *
-             * It can mean:
-             * 1. Payment doesn't exist
-             * 2. Payment was already processed
-             */
+            const payment = await Payment.findOne({
+                gatewayOrderId: razorpayOrderId,
+            }).session(session);
+
             if (!payment) {
-                const existingPayment = await Payment.findOne({
-                    gatewayOrderId: razorpayOrderId,
+                await session.abortTransaction();
+
+                return res.status(404).json({
+                    success: false,
+                    message: "Payment not found",
                 });
+            }
 
-                if (!existingPayment) {
-                    return res.status(404).json({
-                        success: false,
-                        message: "Payment not found",
-                    });
-                }
+            if (payment.status === "paid") {
+                await session.abortTransaction();
 
-                if (existingPayment.status === "paid") {
-                    return res.status(200).json({
-                        success: true,
-                        message: "Payment already processed",
-                    });
-                }
+                return res.status(200).json({
+                    success: true,
+                    message: "Payment already processed",
+                });
+            }
+
+            const order = await Order.findById(payment.order).session(session);
+
+            if (!order) {
+                await session.abortTransaction();
+
+                return res.status(404).json({
+                    success: false,
+                    message: "Order not found",
+                });
+            }
+
+            if (order.status === "cancelled") {
+                await session.abortTransaction();
 
                 return res.status(400).json({
                     success: false,
-                    message: "Payment could not be processed",
+                    message: "Cannot process payment for cancelled order",
                 });
             }
 
-            /*
-             * Payment successfully changed:
-             *
-             * created → paid
-             */
-            const order = await Order.findById(payment.order);
+            payment.gatewayPaymentId = razorpayPaymentId;
+            payment.status = "paid";
 
-            if (order) {
-                order.paymentStatus = "paid";
-                order.status = "processing";
+            await payment.save({ session });
 
-                await order.save();
-            }
+            order.paymentStatus = "paid";
+            order.status = "processing";
+
+            await order.save({ session });
+
+            await session.commitTransaction();
         }
 
         return res.status(200).json({
@@ -274,15 +326,19 @@ const handleWebhook = async (req, res) => {
         });
 
     } catch (err) {
+        await session.abortTransaction();
+
         console.error("Webhook error:", err);
 
         return res.status(500).json({
             success: false,
             message: err.message,
         });
+
+    } finally {
+        await session.endSession();
     }
 };
-
 
 module.exports = {
     createPaymentOrder,

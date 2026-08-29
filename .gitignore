@@ -34,3 +34,7 @@ coverage/
 Readme/
 config.bat
 .env
+payment.sh
+test-api.sh
+product-image.sh
+test-image.jpg

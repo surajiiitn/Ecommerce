@@ -1,8 +1,14 @@
 const Product = require("../models/product.model");
 const mongoose = require("mongoose");
+const {
+    uploadToCloudinary,
+    deleteFromCloudinary
+} = require('../utils/cloudinary');
+
 
 const createProduct = async (req, res) => {
     try {
+
         if (req.user.role !== "admin") {
             return res.status(403).json({
                 success: false,
@@ -10,27 +16,54 @@ const createProduct = async (req, res) => {
             });
         }
 
-        const { name, description, price, category, stock } = req.body;
+        const {
+            name,
+            description,
+            price,
+            category,
+            stock
+        } = req.body;
+
+        let imageUrl = null;
+        let imagePublicId = null;
+
+        // Upload image to Cloudinary
+        if (req.file) {
+
+            const uploadedImage = await uploadToCloudinary(
+                req.file.path
+            );
+
+            imageUrl = uploadedImage.url;
+            imagePublicId = uploadedImage.publicId;
+        }
 
         const product = await Product.create({
             name,
             description,
             price,
             category,
-            stock
+            stock,
+            imageUrl,
+            imagePublicId
         });
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
             message: "Product created successfully",
             data: product
         });
+
     } catch (err) {
-        res.status(500).json({
+
+        console.error("Create product error:", err);
+
+        return res.status(500).json({
             success: false,
             message: "Internal server error",
             error: err.message
         });
+
     }
 };
 
@@ -139,6 +172,7 @@ const updateProduct = async (req, res) => {
     const { id } = req.params;
 
     try {
+
         if (req.user.role !== "admin") {
             return res.status(403).json({
                 success: false,
@@ -153,7 +187,13 @@ const updateProduct = async (req, res) => {
             });
         }
 
-        const { name, description, price, category, stock } = req.body;
+        const {
+            name,
+            description,
+            price,
+            category,
+            stock
+        } = req.body;
 
         const product = await Product.findById(id);
 
@@ -164,21 +204,58 @@ const updateProduct = async (req, res) => {
             });
         }
 
-        if (name !== undefined) product.name = name;
-        if (description !== undefined) product.description = description;
-        if (price !== undefined) product.price = price;
-        if (category !== undefined) product.category = category;
-        if (stock !== undefined) product.stock = stock;
+        // Update normal fields
+        if (name !== undefined) {
+            product.name = name;
+        }
+
+        if (description !== undefined) {
+            product.description = description;
+        }
+
+        if (price !== undefined) {
+            product.price = price;
+        }
+
+        if (category !== undefined) {
+            product.category = category;
+        }
+
+        if (stock !== undefined) {
+            product.stock = stock;
+        }
+
+        // If a new image is uploaded
+        if (req.file) {
+
+            // Delete old Cloudinary image
+            if (product.imagePublicId) {
+                await deleteFromCloudinary(
+                    product.imagePublicId
+                );
+            }
+
+            // Upload new image
+            const uploadedImage =
+                await uploadToCloudinary(req.file.path);
+
+            product.imageUrl = uploadedImage.url;
+            product.imagePublicId = uploadedImage.publicId;
+        }
 
         await product.save();
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Product updated successfully",
             data: product
         });
+
     } catch (err) {
-        res.status(500).json({
+
+        console.error("Update product error:", err);
+
+        return res.status(500).json({
             success: false,
             message: "Internal server error",
             error: err.message
@@ -190,6 +267,7 @@ const deleteProduct = async (req, res) => {
     const { id } = req.params;
 
     try {
+
         if (req.user.role !== "admin") {
             return res.status(403).json({
                 success: false,
@@ -213,15 +291,25 @@ const deleteProduct = async (req, res) => {
             });
         }
 
-        const deletedProduct = await Product.findByIdAndDelete(id);
+        // Delete image from Cloudinary
+        if (product.imagePublicId) {
+            await deleteFromCloudinary(product.imagePublicId);
+        }
 
-        res.status(200).json({
+        // Delete product from MongoDB
+        await Product.findByIdAndDelete(id);
+
+        return res.status(200).json({
             success: true,
             message: "Product deleted successfully",
-            data: deletedProduct
+            data: product
         });
+
     } catch (err) {
-        res.status(500).json({
+
+        console.error("Delete product error:", err);
+
+        return res.status(500).json({
             success: false,
             message: "Internal server error",
             error: err.message
