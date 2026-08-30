@@ -4,7 +4,7 @@ const Order = require("../models/order.model");
 const Product = require("../models/product.model");
 const Address = require("../models/address.model");
 
-const { sendEmail } = require("../utils/email.util");
+const { sendEmail } = require("../utils/email.js");
 
 const createOrder = async (req, res) => {
 
