@@ -38,3 +38,5 @@ payment.sh
 test-api.sh
 product-image.sh
 test-image.jpg
+setup-users.sh
+login-users.sh

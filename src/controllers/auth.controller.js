@@ -1,6 +1,7 @@
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const generateToken = require("../utils/generateToken");
+const { sendEmail } = require("../utils/email");
 
 const register = async (req, res) => {
     try {
@@ -29,6 +30,21 @@ const register = async (req, res) => {
             email,
             password: hashedPassword
         });
+
+        // Send welcome email
+        const subject = "Welcome to Our E-commerce Platform!";
+        const html = `
+            <h1>Welcome, ${name}!</h1>
+            <p>Thank you for registering on our platform. We're excited to have you on board!</p>
+            <p>Happy shopping!</p>
+        `;
+        
+        try{
+            await sendEmail({ to: email, subject, html });
+        }catch(err){
+            console.error("Error sending welcome email:", err.message);
+        }
+        
 
         user.password = undefined;
 
@@ -73,6 +89,19 @@ const login = async (req, res) => {
                 success: false,
                 message: "Invalid credentials"
             });
+        }
+
+        // send login notification email
+        const subject = "Login Notification";
+        const html = `
+            <h1>Hello, ${user.name}!</h1>
+            <p>We noticed a login to your account. If this was you, no action is needed. If you did not log in, please secure your account immediately.</p>
+        `;
+
+        try{
+            await sendEmail({ to: email, subject, html });
+        }catch(err){
+            console.error("Error sending login notification email:", err.message);
         }
 
         const token = generateToken(user);

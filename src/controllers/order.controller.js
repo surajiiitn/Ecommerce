@@ -4,6 +4,8 @@ const Order = require("../models/order.model");
 const Product = require("../models/product.model");
 const Address = require("../models/address.model");
 
+const { sendEmail } = require("../utils/email.util");
+
 const createOrder = async (req, res) => {
 
   const MAX_RETRIES = 3;
@@ -138,6 +140,29 @@ const createOrder = async (req, res) => {
       });
 
       await session.commitTransaction();
+
+      // send order confirmation email
+      const subject = "Order Confirmation";
+      const html = `
+        <h1>Thank you for your order!</h1>
+        <p>Your order has been successfully placed. Here are the details:</p>
+        <ul>
+          ${orderItems
+            .map(
+              (item) =>
+                `<li>${item.quantity} x ${item.product.name} - $${item.price}</li>`
+            )
+            .join("")}
+        </ul>
+        <p>Total Amount: $${totalAmount}</p>
+        <p>Shipping Address: ${address.fullName}, ${address.addressLine}, ${address.city}, ${address.state}, ${address.pincode}, ${address.country}</p>
+      `;
+
+      try {
+        await sendEmail({ to: req.user.email, subject, html });
+      } catch (err) {
+        console.error("Error sending order confirmation email:", err.message);
+      }
 
       return res.status(201).json({
         success: true,
@@ -312,6 +337,23 @@ const cancelOrder = async (req, res) => {
 
     await session.commitTransaction();
 
+    // send order cancellation email
+    const subject = "Order Cancellation";
+    const html = `
+      <h1>Your order has been cancelled</h1>
+      <p>Your order with ID ${order._id} has been successfully cancelled.</p>
+      <p>If you have any questions, please contact our support team.</p>
+    `;
+
+    try {
+      await sendEmail({ to: req.user.email, subject, html });
+    } catch (err) {
+      console.error(
+        "Error sending order cancellation email:",
+        err.message
+      );
+    }
+
     return res.status(200).json({
       success: true,
       message: "Order cancelled successfully",
@@ -374,6 +416,23 @@ const updateOrderStatus = async (req, res) => {
     order.status = status;
 
     await order.save();
+
+    // send order status update email
+    const subject = "Order Status Update";
+    const html = `
+      <h1>Your order status has been updated</h1>
+      <p>Your order with ID ${order._id} is now ${status}.</p>
+      <p>If you have any questions, please contact our support team.</p>
+    `;
+
+    try {
+      await sendEmail({ to: order.user.email, subject, html });
+    } catch (err) {
+      console.error(
+        "Error sending order status update email:",
+        err.message
+      );
+    }
 
     res.status(200).json({
       success: true,

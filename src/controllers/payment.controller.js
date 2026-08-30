@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const Order = require("../models/order.model");
 const Payment = require("../models/payment.model");
 const razorpay = require("../config/razorpay");
+const { sendEmail } = require("../utils/email");
 
 const createPaymentOrder = async (req, res) => {
     try {
@@ -158,6 +159,19 @@ const verifyPayment = async (req, res) => {
 
             await session.commitTransaction();
 
+            // send payment failure email
+            const subject = "Payment Failed";
+            const html = `
+                <h1>Payment Failed</h1>
+                <p>Your payment for order ${payment.order} has failed. Please try again or contact support.</p>
+            `;
+
+            try {
+                await sendEmail({ to: req.user.email, subject, html });
+            } catch (err) {
+                console.error("Error sending payment failure email:", err.message);
+            }
+            
             return res.status(400).json({
                 success: false,
                 message: "Invalid payment signature",
@@ -199,6 +213,20 @@ const verifyPayment = async (req, res) => {
         await order.save({ session });
 
         await session.commitTransaction();
+
+        // send payment confirmation email
+        const subject = "Payment Confirmation";
+        const html = `
+            <h1>Payment Successful!</h1>
+            <p>Your payment for order ${order._id} has been successfully processed.</p>
+            <p>Thank you for shopping with us!</p>
+        `;
+
+        try {
+            await sendEmail({ to: req.user.email, subject, html });
+        } catch (err) {
+            console.error("Error sending payment confirmation email:", err.message);
+        }
 
         return res.status(200).json({
             success: true,
