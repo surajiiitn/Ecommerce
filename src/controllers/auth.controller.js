@@ -1,6 +1,6 @@
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
-const generateToken = require("../utils/generateToken");
+const {generateAccessToken,generateRefreshToken,hashRefreshToken} = require('../utils/generateToken');
 const { sendEmail } = require("../utils/email");
 
 const register = async (req, res) => {
@@ -104,15 +104,29 @@ const login = async (req, res) => {
             console.error("Error sending login notification email:", err.message);
         }
 
-        const token = generateToken(user);
+        const accessToken = generateAccessToken(user);
+        const refreshToken = generateRefreshToken(user);
+        const hashedRefreshToken = await hashRefreshToken(refreshToken);
+        
+        user.refreshTokenHash = hashedRefreshToken;
+        await user.save();
+
 
         user.password = undefined;
 
         res.status(200).json({
             success: true,
             message: "User logged in successfully",
-            token,
-            data: user
+            data: {
+            accessToken,
+            refreshToken,
+            user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role
+                }
+        }
         });
 
     } catch (err) {
@@ -123,7 +137,80 @@ const login = async (req, res) => {
     }
 };
 
+const refreshAccessToken = async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+
+        if (!refreshToken) {
+            return res.status(401).json({
+                success: false,
+                message: "Refresh token is required"
+            });
+        }
+
+        const refreshTokenHash = hashRefreshToken(refreshToken);
+
+        const user = await User.findOne({
+            refreshTokenHash
+        });
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid refresh token"
+            });
+        }
+
+        const accessToken = generateAccessToken(user);
+
+        return res.status(200).json({
+            success: true,
+            message: "Access token refreshed successfully",
+            data: {
+                accessToken
+            }
+        });
+
+    } catch (err) {
+        console.error("Refresh token error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
+
+
+const logout = async (req, res) => {
+    try {
+
+        const userId = req.user._id || req.user.id;
+
+        await User.findByIdAndUpdate(
+            userId,
+            {
+                refreshTokenHash: null
+            }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Logout successful"
+        });
+
+    } catch (err) {
+        console.error("Logout error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 module.exports = {
     register,
-    login
+    login,
+    refreshAccessToken,
+    logout
 };
