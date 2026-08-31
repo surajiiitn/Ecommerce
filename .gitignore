@@ -16,7 +16,6 @@ pnpm-debug.log*
 Thumbs.db
 
 # IDE files
-.vscode/
 .idea/
 
 # Build folders
@@ -33,7 +32,6 @@ coverage/
 # Local files 
 Readme/
 config.bat
-.env
 payment.sh
 test-api.sh
 product-image.sh
